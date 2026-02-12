@@ -1,9 +1,9 @@
-import { Box, Paper, Typography, Chip, Stack, Avatar } from "@mui/material";
+import { Box, Paper, Typography, Chip, Stack, Avatar, TextField } from "@mui/material";
 import { useOutletContext } from "react-router-dom";
 import { branches } from "../../data/mock.js";
 
 export default function ActiveEmployees() {
-  const { branchId, employees } = useOutletContext();
+  const { branchId, employees, setEmployees } = useOutletContext();
 
   const items = employees.filter((x) => branchId === "all" || x.branchId === branchId);
   const activeCount = items.length;
@@ -12,7 +12,13 @@ export default function ActiveEmployees() {
 
   return (
     <Paper sx={{ p: 3, borderRadius: 3 }}>
-      <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 2 }}>
+      <Stack
+        direction={{ xs: "column", sm: "row" }}
+        justifyContent="space-between"
+        alignItems={{ xs: "flex-start", sm: "center" }}
+        spacing={1}
+        sx={{ mb: 2 }}
+      >
         <Typography variant="h6" sx={{ fontWeight: 700 }}>
           Empleados Registrados
         </Typography>
@@ -26,7 +32,7 @@ export default function ActiveEmployees() {
               • {branchName(x.branchId)}
             </Typography>
 
-            <Stack direction="row" spacing={2} alignItems="center">
+            <Stack direction={{ xs: "column", sm: "row" }} spacing={2} alignItems={{ xs: "flex-start", sm: "center" }}>
               <Avatar sx={{ bgcolor: "#16a34a", width: 44, height: 44 }}>
                 {x.initials}
               </Avatar>
@@ -34,6 +40,24 @@ export default function ActiveEmployees() {
               <Box sx={{ flex: 1 }}>
                 <Typography sx={{ fontWeight: 700 }}>{x.name}</Typography>
                 <Typography variant="body2" color="text.secondary">{x.role}</Typography>
+                <TextField
+                  size="small"
+                  label="Pago por hora (RD$)"
+                  type="number"
+                  value={x.hourlyRate ?? ""}
+                  inputProps={{ min: 0, step: "0.01" }}
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    setEmployees(
+                      employees.map((item) =>
+                        item.id === x.id
+                          ? { ...item, hourlyRate: value === "" ? "" : Number(value) }
+                          : item
+                      )
+                    );
+                  }}
+                  sx={{ mt: 1, maxWidth: { xs: "100%", sm: 220 } }}
+                />
               </Box>
             </Stack>
           </Box>

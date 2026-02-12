@@ -3,7 +3,7 @@ import DownloadIcon from "@mui/icons-material/Download";
 import { useMemo, useState } from "react";
 import { useOutletContext } from "react-router-dom";
 import { branches } from "../../data/mock.js";
-import { exportToCsv } from "../../utils/exportCsv.js";
+import { exportHoursRegisterExcel } from "../../utils/exportExcel.js";
 
 const periods = [
   { id: "hoy", label: "Hoy" },
@@ -37,9 +37,14 @@ export default function HoursRegister() {
   }, [branchId, employees, search]);
 
   const total = rows.length;
+  const currentBranchLabel = branches.find((b) => b.id === branchId)?.name ?? "Todas las Sucursales";
+  const currentPeriodLabel = periods.find((p) => p.id === period)?.label ?? "Hoy";
 
-  const handleExport = () => {
-    exportToCsv(`registro-horas-${period}.csv`, rows);
+  const handleExport = async () => {
+    await exportHoursRegisterExcel(`registro-horas-${period}.xlsx`, rows, {
+      branchLabel: currentBranchLabel,
+      periodLabel: currentPeriodLabel,
+    });
   };
 
   return (
@@ -50,7 +55,7 @@ export default function HoursRegister() {
         </Typography>
 
         <Button variant="outlined" startIcon={<DownloadIcon />} onClick={handleExport}>
-          Exportar a CSV
+          Exportar a Excel
         </Button>
       </Stack>
 

@@ -18,7 +18,8 @@ export default function App() {
         <Route path="horario" element={<Schedule />} />
       </Route>
 
-      <Route path="/kiosco" element={<Kiosk />} />
+      <Route path="/trabajo" element={<Kiosk />} />
+      <Route path="/kiosco" element={<Navigate to="/trabajo" replace />} />
 
       <Route path="*" element={<Navigate to="/admin" replace />} />
     </Routes>

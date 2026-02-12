@@ -2,13 +2,27 @@ import { Box, Container, Tabs, Tab, Paper } from "@mui/material";
 import TopBar from "../../components/TopBar.jsx";
 import { branches } from "../../data/mock.js";
 import { Outlet, useNavigate, useLocation } from "react-router-dom";
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
+
+const EMPLOYEES_STORAGE_KEY = "billix_employees_v1";
 
 export default function AdminLayout() {
   const [branchId, setBranchId] = useState("all");
-  const [employees, setEmployees] = useState([]);
+  const [employees, setEmployees] = useState(() => {
+    try {
+      const raw = localStorage.getItem(EMPLOYEES_STORAGE_KEY);
+      const parsed = raw ? JSON.parse(raw) : [];
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  });
   const nav = useNavigate();
   const loc = useLocation();
+
+  useEffect(() => {
+    localStorage.setItem(EMPLOYEES_STORAGE_KEY, JSON.stringify(employees));
+  }, [employees]);
 
   const tab = useMemo(() => {
     if (loc.pathname.includes("/admin/registro")) return 1;

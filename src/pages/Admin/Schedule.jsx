@@ -1,14 +1,118 @@
 import { Box, Paper, Typography, TextField, MenuItem, Button, Stack, Alert } from "@mui/material";
 import ExcelJS from "exceljs";
 import { saveAs } from "file-saver";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useOutletContext } from "react-router-dom";
 import { branches } from "../../data/mock.js";
+
+const SCHEDULE_STORAGE_KEY = "billix_schedules_v1";
+const dayLabels = ["Lunes", "Martes", "Miercoles", "Jueves", "Viernes", "Sabado", "Domingo"];
+
+const scheduleTemplate = [
+  { id: "cajero-manana", label: "Cajero Manana", shift: "morning", category: "cajero" },
+  { id: "cajero-tarde", label: "Cajero Tarde", shift: "afternoon", category: "cajero" },
+  { id: "gondola-manana", label: "Gondola Manana", shift: "morning", category: "gondola" },
+  { id: "gondola-tarde", label: "Gondola Tarde", shift: "afternoon", category: "gondola" },
+  { id: "carniceria-manana", label: "Carniceria Manana", shift: "morning", category: "carniceria" },
+  { id: "carniceria-tarde", label: "Carniceria Tarde", shift: "afternoon", category: "carniceria" },
+];
+
+const tagColors = {
+  cajero: "#20a4f3",
+  gondola: "#12b886",
+  carniceria: "#f59f00",
+};
+
+const getWeekDates = (start) => {
+  if (!start) return [];
+  const base = new Date(`${start}T00:00:00`);
+  if (Number.isNaN(base.getTime())) return [];
+  return Array.from({ length: 7 }, (_, i) => {
+    const d = new Date(base);
+    d.setDate(base.getDate() + i);
+    return d;
+  });
+};
+
+const formatDateLabel = (date, index) => {
+  const day = dayLabels[index] ?? "Dia";
+  const dd = String(date.getDate()).padStart(2, "0");
+  const mm = String(date.getMonth() + 1).padStart(2, "0");
+  return `${day} ${dd}/${mm}`;
+};
+
+const getMonday = (date) => {
+  const d = new Date(date);
+  const day = d.getDay();
+  const diff = day === 0 ? -6 : 1 - day;
+  d.setDate(d.getDate() + diff);
+  d.setHours(0, 0, 0, 0);
+  return d;
+};
+
+const toDateInput = (date) => {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+};
+
+const readStoredSchedules = () => {
+  try {
+    const raw = localStorage.getItem(SCHEDULE_STORAGE_KEY);
+    const parsed = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+};
+
+const writeStoredSchedules = (items) => {
+  localStorage.setItem(SCHEDULE_STORAGE_KEY, JSON.stringify(items));
+};
+
+const upsertStoredSchedule = (record) => {
+  const items = readStoredSchedules();
+  const next = items.filter((x) => !(x.branchId === record.branchId && x.weekStart === record.weekStart));
+  next.push(record);
+  writeStoredSchedules(next);
+};
+
+const getStoredSchedule = (branchId, weekStart) => {
+  const items = readStoredSchedules();
+  return items.find((x) => x.branchId === branchId && x.weekStart === weekStart) ?? null;
+};
+
+const hydrateSchedule = (stored) => {
+  if (!stored || !Array.isArray(stored.days) || !Array.isArray(stored.slots) || !stored.cells) {
+    return null;
+  }
+  const days = stored.days
+    .map((x) => new Date(`${x}T00:00:00`))
+    .filter((x) => !Number.isNaN(x.getTime()));
+  if (days.length !== 7) return null;
+  return {
+    days,
+    slots: stored.slots,
+    cells: stored.cells,
+  };
+};
+
+const normalizeSchedule = (schedule) => ({
+  days: schedule.days.map((d) => toDateInput(d)),
+  slots: schedule.slots,
+  cells: schedule.cells,
+});
+
+const hasEmployeeTag = (employee, tagId) => {
+  if (Array.isArray(employee.tags)) return employee.tags.includes(tagId);
+  return employee.tag === tagId;
+};
 
 export default function Schedule() {
   const { employees } = useOutletContext();
   const [scheduleBranchId, setScheduleBranchId] = useState("st2");
-  const [weekStart, setWeekStart] = useState("");
+  const [weekStart, setWeekStart] = useState(() => toDateInput(getMonday(new Date())));
   const [message, setMessage] = useState("");
   const [defaultTimes, setDefaultTimes] = useState({
     morning: "06:30 am - 02:20 pm",
@@ -16,42 +120,22 @@ export default function Schedule() {
   });
   const [schedule, setSchedule] = useState(null);
 
-  const scheduleTemplate = [
-    { id: "cajero-manana", label: "Cajero Manana", shift: "morning", category: "cajero" },
-    { id: "cajero-tarde", label: "Cajero Tarde", shift: "afternoon", category: "cajero" },
-    { id: "gondola-manana", label: "Gondola Manana", shift: "morning", category: "gondola" },
-    { id: "gondola-tarde", label: "Gondola Tarde", shift: "afternoon", category: "gondola" },
-    { id: "carniceria-manana", label: "Carniceria Manana", shift: "morning", category: "carniceria" },
-    { id: "carniceria-tarde", label: "Carniceria Tarde", shift: "afternoon", category: "carniceria" },
-  ];
+  useEffect(() => {
+    const stored = getStoredSchedule(scheduleBranchId, weekStart);
+    const hydrated = hydrateSchedule(stored);
+    setSchedule(hydrated);
+  }, [scheduleBranchId, weekStart]);
 
-  const tagColors = {
-    cajero: "#20a4f3",
-    gondola: "#12b886",
-    carniceria: "#f59f00",
-  };
-
-  const dayLabels = ["Lunes", "Martes", "Miercoles", "Jueves", "Viernes", "Sabado", "Domingo"];
+  useEffect(() => {
+    if (!schedule || !weekStart) return;
+    upsertStoredSchedule({
+      branchId: scheduleBranchId,
+      weekStart,
+      ...normalizeSchedule(schedule),
+    });
+  }, [schedule, scheduleBranchId, weekStart]);
 
   const branchName = (id) => branches.find((b) => b.id === id)?.name ?? id;
-
-  const getWeekDates = (start) => {
-    if (!start) return [];
-    const base = new Date(`${start}T00:00:00`);
-    if (Number.isNaN(base.getTime())) return [];
-    return Array.from({ length: 7 }, (_, i) => {
-      const d = new Date(base);
-      d.setDate(base.getDate() + i);
-      return d;
-    });
-  };
-
-  const formatDateLabel = (date, index) => {
-    const day = dayLabels[index] ?? "Dia";
-    const dd = String(date.getDate()).padStart(2, "0");
-    const mm = String(date.getMonth() + 1).padStart(2, "0");
-    return `${day} ${dd}/${mm}`;
-  };
 
   const generateSchedule = () => {
     if (!weekStart) {
@@ -321,7 +405,7 @@ export default function Schedule() {
               {schedule.days.map((_, dayIndex) => {
                 const key = `${slot.id}-${dayIndex}`;
                 const cell = schedule.cells[key];
-                const slotEmployees = scheduleEmployees.filter((e) => e.tag === slot.category);
+                const slotEmployees = scheduleEmployees.filter((e) => hasEmployeeTag(e, slot.category));
                 const selectEmployees = slotEmployees.length > 0 ? slotEmployees : scheduleEmployees;
                 return (
                   <Box key={key} sx={{ p: 1, borderLeft: "1px solid #eee" }}>
